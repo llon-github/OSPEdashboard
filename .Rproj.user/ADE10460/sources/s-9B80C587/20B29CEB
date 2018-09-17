@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1535382429364.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "20B29CEB",
+    "lastKnownWriteTime" : 1535486069,
+    "last_content_update" : 1535486069833,
+    "path" : "~/OSPEdashboard/app.R",
+    "project_path" : "app.R",
+    "properties" : {
+        "cursorPosition" : "164,7",
+        "scrollLine" : "145"
+    },
+    "relative_order" : 1,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

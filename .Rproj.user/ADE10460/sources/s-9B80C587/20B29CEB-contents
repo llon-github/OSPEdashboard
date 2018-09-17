@@ -1,0 +1,189 @@
+# Load packages -----------------------------------------------------
+library(shiny)
+library(shinydashboard)
+library(highcharter)
+library(dplyr)
+library(tidyr)
+library(DT)
+library(readxl)
+library(RSQLite)
+
+dashboardPage(
+  dashboardHeader(),
+  dashboardSidebar(),
+  dashboardBody()
+)
+
+# UI ----------------------------------------------------------------
+ui <- dashboardPage(
+  
+  # header code
+  dashboardHeader(title = "OSPE Database",
+                  dropdownMenu(type = "messages",
+                               messageItem(
+                                 from = "Sales Dept",
+                                 message = "Sales are steady this month."
+                               ),
+                               messageItem(
+                                 from = "New User",
+                                 message = "How do I register?",
+                                 icon = icon("question"),
+                                 time = "13:45"
+                               ),
+                               messageItem(
+                                 from = "Support",
+                                 message = "The new server is ready.",
+                                 icon = icon("life-ring"),
+                                 time = "2014-12-01"
+                               )
+                  ),
+                  dropdownMenu(type = "notifications", notificationItem(
+                    text = "5 new users today",
+                    icon("users")
+                  ),icon = icon("github"))
+  ),
+  
+  # sidebar code
+  dashboardSidebar(
+    
+    # sidebar menus; maybe include Jon's nightly for easy access(?)
+    sidebarMenu(id = "sidebarMenu",
+                menuItem("Dashboard", tabName ="dashboard", icon = icon("dashboard")),
+                menuItem("Nightly/Weekly Regression", tabName = "nightly-weekly", icon = icon("calendar"),
+                         menuSubItem("Cypress Nightly", href = "http://emcmark1/cypress-nightly-links.html"),
+                         menuSubItem("Elm Nightly", href = "http://emcmark1/elm-nightly-links.html"),
+                         menuSubItem("Elm-SR Nightly", href = "http://emcmark1/elm-sr-nightly-links.html"),
+                         menuSubItem("Elm-SR Weekly", href = "http://emcmark1/elm-sr-weekly-links.html"),
+                         menuSubItem("Foxtail Nightly", href = "http://emcmark1/early-foxtail-nightly-links.html")),
+                menuItem("Catalog", tabName ="catalog", icon = icon("database"),
+                         
+                         # box filter groups
+                         checkboxGroupInput("typeFilter", label = h3("Box Type"),
+                                            choices = list("250F" = "250F", "950F" = "950F", "PowerMax2000" = "PowerMax2000",
+                                                           "PowerMax8000" = "PowerMax8000" ), selected = NULL), 
+                         #verbatimTextOutput("typeValue"),
+                         
+                         checkboxGroupInput("engineFilter", label = h3("Engines"),
+                                            choices = list("1" = 1, "2" = 2, "8" = 3),
+                                            selected = NULL), 
+                         #verbatimTextOutput("engineValue"),
+                         
+                         checkboxGroupInput("featuresFilter", label = h3("Features"),
+                                            choices = list("Uncompressed" = "Uncompressed", "Compression" = "Compression",
+                                                           "DeDupe" = "DeDupe", "PowerPath" = "PowerPath", "D@RE" = "DARE" ),
+                                            selected = NULL)
+                         #verbatimTextOutput("featuresValue"),
+                         
+                ),
+                menuItem("Machine List", tabName = "machinelist", icon = icon("list-ul"),
+                         menuSubItem("OSPE Boxes", tabName = "ospeboxes"),
+                         menuSubItem("DellEMC Boxes", tabName = "dellemcboxes")),
+                menuItem("Bits and Bytes Articles", tabName = "bitsandbytes", icon = icon("file"))
+    )
+  ),
+  
+  dashboardBody(
+    
+    # each tab represents a different panel to be displayed
+    tabItems(
+      tabItem("ospeboxes", "Box List", DT::dataTableOutput("boxlist")),
+      tabItem("bitsandbytes", "Bits-N-Bytes Library", verbatimTextOutput(("dbprint"))),
+      tabItem("dellemcboxes", "Test Title" , htmlOutput("boxeshtml"))
+      )
+    ),
+    
+    fluidRow(
+      
+      # box(
+      #   title = "Controls",
+      #   sliderInput("slider", "Number of observations:", 1, 100, 50),
+      #   
+      #   # change plot properties
+      #   selectInput("plot_type",
+      #               label = "Plot Type",
+      #               choices = c("Scatter" = "scatter",
+      #                           "Bar" = "column",
+      #                           "Line" = "line")),
+      #   selectInput("theme",
+      #               label = "Plot Theme",
+      #               choices = c("No theme",
+      #                           "Chalk" = "chalk",
+      #                           "Dark Unica" = "darkunica",
+      #                           "Economist" = "economist"
+      #               )),
+      #   
+      #   # timeperiod choice
+      #   dateRangeInput("dateFilter", label =paste('Date Range'),
+      #                  start = Sys.Date() - 7, end = Sys.Date(), separator = " - ", format = "mm-dd-yyyy",
+      #                  startview = 'month', language = 'en', weekstart = 0),
+      #   verbatimTextOutput("dateValue")
+      # ),
+      # 
+      # tags$head(tags$style(HTML('
+      # .main-header .logo {
+      #   font-family: "Arial", "Helvetica", sans-serif;
+      #   font-weight: bold;
+      #   font-size: 24px;
+      # }
+      # '))),
+      textOutput("rez")
+      #highchartOutput("plot", height = "300px"),
+    ),
+  # window color
+  skin = "purple"
+)
+
+
+# SERVER ------------------------------------------------------------
+server = function(input, output) {
+  
+  output$plot <- renderHighchart({
+    
+  })
+  
+  observeEvent(input$sidebarMenu, {
+    if (input$sidebarMenu=="dashboard") {
+      # insertUI(
+      #   selector = "#sidebarMenu",
+      #   # options = beforeBegin, afterBegin, beforeEnd, afterEnd
+      #   where = "afterEnd",
+      #   ui = textInput(paste0("txt", input$add),"Insert some text")
+      # )
+    }
+    
+    
+    if (input$sidebarMenu=="ospeboxes") {
+      output$boxlist <- DT::renderDataTable({
+        location = "\\\\efsus03\\pdata\\OSPE_Group_Folder\\dashboard\\machinelist.xlsx"
+        read_xlsx(paste(location))
+      }, options = list(autoWidth = TRUE))
+    }
+    
+    if (input$sidebarMenu=="dellemcboxes") {
+      getPage<-function(){
+        return(includeHTML("\\\\efsus03\\pdata\\OSPE_Group_Folder\\dashboard\\boxlist.htm"))
+      }
+      output$boxeshtml<-renderUI({getPage()})
+    }
+    
+    if (input$sidebarMenu=="bitsandbytes") {
+      sqlitePath <- "db//master.db"
+      query <- sprintf("SELECT Model, Release, Ucode, Raid, Features, DbName FROM catalog")
+      db <- dbConnect(SQLite(), dbname=sqlitePath)
+      data <- dbGetQuery(db, query)
+      dbDisconnect(db)
+
+      output$dbprint <- renderPrint({data})
+
+    }
+  })
+    
+  
+  # output$typeValue <- renderPrint({ input$typeFilter })
+  # output$engineValue <- renderPrint({ input$engineFilter })
+  # output$featuresValue <- renderPrint({ input$featuresFilter })
+  # output$dateValue <- renderPrint({ input$dateFilter } )
+}
+
+# Run app -----------------------------------------------------------
+shinyApp(ui = ui, server = server)

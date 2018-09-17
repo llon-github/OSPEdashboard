@@ -1,0 +1,14 @@
+library("RSQLite")
+
+queryDB <- function(){
+  sqlitePath <- "db//RESULTS_missingDB.db"
+  query <- sprintf("SELECT * FROM char")
+  db <- dbConnect(SQLite(), dbname=sqlitePath)
+  data <- dbGetQuery(db, query)
+  dbDisconnect(db)
+}
+# sqlitePath <- "db//RESULTS_missingDB.db"
+# query <- sprintf("SELECT * FROM char")
+# db <- dbConnect(SQLite(), dbname=sqlitePath)
+# data <- dbGetQuery(db, query)
+# dbDisconnect(db)
