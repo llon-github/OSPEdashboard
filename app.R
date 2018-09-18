@@ -70,15 +70,13 @@ ui <- dashboardPage(
     # tabItems used to display different content and creates a new "mainPanel()"
       tabItems(
         #tabItem("dashboard"), highchartOutput("plot"),
-        tabItem("catalog", uiOutput(("filters")), uiOutput(("list")), DT::dataTableOutput("dbTable")),
+        tabItem("catalog", uiOutput(("filters")), uiOutput(("list"))),
         tabItem("ospeboxes", uiOutput("boxlist")),
         tabItem("bitsandbytes", "Bits-N-Bytes Library", verbatimTextOutput(("print"))),
         tabItem("dellemcboxes", h2("DellEMC Boxes") , htmlOutput("boxeshtml"))
         )
       )
     ),
-    
-    verbatimTextOutput("debug"),
       # box(
       #   title = "Controls",
       #   sliderInput("slider", "Number of observations:", 1, 100, 50),
@@ -144,12 +142,12 @@ server = function(input, output, session) {
       passedValue <- "PMax8000"
     }
     
-    query <- paste0("SELECT Model, Release, Ucode, Raid, Features, DbName FROM catalog WHERE Model LIKE '%", passedValue, "%'")
+    query <- paste0("SELECT Model, Release, Ucode, Raid, Features, TestPath FROM catalog WHERE Model LIKE '%", passedValue, "%'")
     db <- dbConnect(SQLite(), dbname=sqlitePath)
-    data <- dbGetQuery(db, query)
+    dbdata <- dbGetQuery(db, query)
     dbDisconnect(db)
 
-    return(data)
+    return(dbdata)
   }
   
   # call to query DB; pass in value depending on filters applied for number of engines
@@ -166,12 +164,12 @@ server = function(input, output, session) {
       passedValue <- "8Engine"
     }
     
-    query <- paste0("SELECT Model, Release, Ucode, Raid, Features, DbName FROM catalog WHERE Model LIKE '%", passedValue, "%'")
+    query <- paste0("SELECT Model, Release, Ucode, Raid, Features, TestPath FROM catalog WHERE Model LIKE '%", passedValue, "%'")
     db <- dbConnect(SQLite(), dbname=sqlitePath)
-    data <- dbGetQuery(db, query)
+    dbdata <- dbGetQuery(db, query)
     dbDisconnect(db)
     
-    return(data)
+    return(dbdata)
   }
   
   # call to query DB; pass in value depending on filters applied for box features
@@ -194,12 +192,12 @@ server = function(input, output, session) {
       passedValue <- "DARE"
     }
     
-    query <- paste0("SELECT Model, Release, Ucode, Raid, Features, DbName FROM catalog WHERE Features LIKE '%", passedValue, "%'")
+    query <- paste0("SELECT Model, Release, Ucode, Raid, Features, TestPath FROM catalog WHERE Features LIKE '%", passedValue, "%'")
     db <- dbConnect(SQLite(), dbname=sqlitePath)
-    data <- dbGetQuery(db, query)
+    dbdata <- dbGetQuery(db, query)
     dbDisconnect(db)
     
-    return(data)
+    return(dbdata)
   }
   
   # first display on the catalog tab
@@ -242,12 +240,19 @@ server = function(input, output, session) {
                                             "DeDupe" = "DeDupe", "PowerPath" = "PowerPath", "D@RE" = "DARE" ),
                              selected = NULL),
           br(),
-          actionButton("graph", "Import data..."),
+          actionButton("graph", "Add to graphs..."),
           actionButton("export", "Export to DB2XL...")
         )
+        
+        
       })
       
-      
+      output$list <- renderUI({
+        tabBox(title = "OSPE Catalog", id = "tabset1", height = "250px", width = 9,
+               tabPanel("Database", DT::dataTableOutput("dbTable")),
+               tabPanel("Graphs", verbatimTextOutput("debug")),
+               tabPanel("Metadata", paste0("y")))
+      })
     }
     
     if (input$sidebarMenu=="ospeboxes") {
@@ -275,6 +280,9 @@ server = function(input, output, session) {
   
   # boxFilter triggers
   observeEvent(input$typeFilter, {
+    # change to database panel when button clicked
+    updateTabsetPanel(session, "tabset1", selected = paste0("Database"))
+    
     # variable storage for multiple checkbox inputs
     vmax250F <- "250F"  %in% input$typeFilter
     vmax950F <- "950F"  %in% input$typeFilter
@@ -283,35 +291,35 @@ server = function(input, output, session) {
 
     if (vmax250F) {
         filter <- "250F"
-        data = dbBoxQuery(filter)
+        dbdata = dbBoxQuery(filter)
     }
 
     if (vmax950F) {
         filter <- "950F"
-        data = dbBoxQuery(filter)
+        dbdata = dbBoxQuery(filter)
     }
 
     if (pmax2000) {
         filter <- "PowerMax2000"
-        data = dbBoxQuery(filter)
+        dbdata = dbBoxQuery(filter)
     }
 
     if (pmax8000) {
         filter <- "PowerMax8000"
-        data = dbBoxQuery(filter)
+        dbdata = dbBoxQuery(filter)
     }
     
-    output$list <- renderUI({
-      tabBox(title = "OSPE Catalog", id = "tabset1", height = "250px", width = 9,
-             tabPanel("Database", output$dbprint <- DT::renderDT({data}, options = list(pageLength = 15, lengthChange = FALSE))),
-             tabPanel("Graphs", paste0(filter)),
-             tabPanel("Metadata", paste0(filter)))
-    })
+    # use dbTable reference to dynamically change just the chart instead of re-rendering
+    output$dbTable <- DT::renderDT({dbdata}, options = list(pageLength = 15, lengthChange = FALSE))
+    
     
   })
   
   # engine triggers
   observeEvent(input$engineFilter, {
+    # change to database panel when button clicked
+    updateTabsetPanel(session, "tabset1", selected = paste0("Database"))
+    
     # variable storage for multiple checkbox inputs
     engines1 <- "1"  %in% input$engineFilter
     engines2 <- "2"  %in% input$engineFilter
@@ -319,30 +327,28 @@ server = function(input, output, session) {
     
     if (engines1) {
         filter <- "1"
-        data = dbEngineQuery(filter)
+        dbdata = dbEngineQuery(filter)
     }
     
     if (engines2) {
         filter <- "2"
-        data = dbEngineQuery(filter)
+        dbdata = dbEngineQuery(filter)
     }
     
     if (engines8) {
         filter <- "8"
-        data = dbEngineQuery(filter)
+        dbdata = dbEngineQuery(filter)
     }
     
-    output$list <- renderUI({
-      tabBox(title = "OSPE Catalog", id = "tabset1", height = "250px", width = 9,
-             tabPanel("Database", output$dbprint <- DT::renderDT({data}, options = list(pageLength = 15, lengthChange = FALSE))),
-             tabPanel("Graphs", paste0(filter)),
-             tabPanel("Metadata", paste0(filter)))
-    })
-    
+    # use dbTable reference to dynamically change just the chart instead of re-rendering
+    output$dbTable <- DT::renderDT({dbdata}, options = list(pageLength = 15, lengthChange = FALSE))
   })
   
   # features triggers
   observeEvent(input$featuresFilter, {
+    # change to database panel when button clicked
+    updateTabsetPanel(session, "tabset1", selected = paste0("Database"))
+    
     # variable storage for multiple checkbox inputs
     noComp <- "Uncompressed"  %in% input$featuresFilter
     comp <- "Compression"  %in% input$featuresFilter
@@ -352,34 +358,45 @@ server = function(input, output, session) {
     
     if (noComp) {
         filter <- "Uncompressed"
-        data = dbFeaturesQuery(filter)
+        dbdata = dbFeaturesQuery(filter)
     }
     
     if (comp) {
         filter <- "Compression"
-        data = dbFeaturesQuery(filter)
+        dbdata = dbFeaturesQuery(filter)
     }
     
     if (dedupe) {
         filter <- "DeDupe"
-        data = dbFeaturesQuery(filter)
+        dbdata = dbFeaturesQuery(filter)
     }
     
     if (powerpath) {
         filter <- "PowerPath"
-        data = dbFeaturesQuery(filter)
+        dbdata = dbFeaturesQuery(filter)
     }
     
     if (dare) {
         filter <- "DARE"
-        data = dbFeaturesQuery(filter)
+        dbdata = dbFeaturesQuery(filter)
     }
     
-    output$list <- renderUI({
-      tabBox(title = "OSPE Catalog", id = "tabset1", height = "250px", width = 9,
-             tabPanel("Database", output$dbprint <- DT::renderDT({data}, options = list(pageLength = 15, lengthChange = FALSE))),
-             tabPanel("Graphs", paste0(filter)),
-             tabPanel("Metadata", paste0(filter)))
+    # use dbTable reference to dynamically change just the chart instead of re-rendering
+    output$dbTable <- DT::renderDT({dbdata}, options = list(pageLength = 15, lengthChange = FALSE, scrollX = TRUE))
+    
+  })
+  
+  storedSelections <- reactiveValues()
+  
+  observeEvent(input$graph,{
+    # change to graph panel when button clicked
+    updateTabsetPanel(session, "tabset1", selected = paste0("Graphs"))
+    
+    # reactive expression to store data from previous selections over to a new graph
+    storedSelections$dList <- c(isolate(storedSelections$dList), isolate(input$dbTable_rows_selected))
+  
+    output$debug <- renderPrint({
+      storedSelections$dList
     })
   })
   
@@ -390,7 +407,7 @@ server = function(input, output, session) {
     # })
     #system('ruby "C:/Users/lonl/Documents/Ruby/Post-Processing-v2/Main.rb"')
   })
-    
+  
   output$plot <- renderHighchart({
     
   })
