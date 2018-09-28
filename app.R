@@ -3,6 +3,8 @@ library(shiny)
 library(shinydashboard)
 library(highcharter)
 library(dplyr)
+library(stringr)
+library(purrr)
 library(tidyr)
 library(DT)
 library(readxl)
@@ -68,9 +70,10 @@ ui <- dashboardPage(
 
     fluidRow(
     # tabItems used to display different content and creates a new "mainPanel()"
+
       tabItems(
-        #tabItem("dashboard"), highchartOutput("plot"),
-        tabItem("catalog", uiOutput(("filters")), uiOutput(("list"))),
+        #tabItem("dashboard"),
+        tabItem("catalog", uiOutput("list"), uiOutput("char"), column(11, offset = 7, uiOutput("dbsim"))),
         tabItem("ospeboxes", uiOutput("boxlist")),
         tabItem("bitsandbytes", "Bits-N-Bytes Library", verbatimTextOutput(("print"))),
         tabItem("dellemcboxes", h2("DellEMC Boxes") , htmlOutput("boxeshtml"))
@@ -142,7 +145,7 @@ server = function(input, output, session) {
       passedValue <- "PMax8000"
     }
     
-    query <- paste0("SELECT Model, Release, Ucode, Raid, Features, TestPath FROM catalog WHERE Model LIKE '%", passedValue, "%'")
+    query <- paste0("SELECT Model, Release, Ucode, Raid, Features, DbName FROM catalog WHERE Model LIKE '%", passedValue, "%'")
     db <- dbConnect(SQLite(), dbname=sqlitePath)
     dbdata <- dbGetQuery(db, query)
     dbDisconnect(db)
@@ -200,6 +203,25 @@ server = function(input, output, session) {
     return(dbdata)
   }
   
+  # get every row from DB
+  dbFullQuery <- function(features){
+    sqlitePath <- "db//master.db"
+    query <- paste0("SELECT CatID, Model, Release, Ucode, Raid, Features, TestPath FROM catalog")
+    db <- dbConnect(SQLite(), dbname=sqlitePath)
+    dbdata <- dbGetQuery(db, query)
+    dbDisconnect(db)
+    
+    # convert char columns to factor columns to selectize via filter box
+    dbdata$Model <- factor(dbdata$Model, ordered = TRUE)
+    dbdata$Release <- factor(dbdata$Release, ordered = TRUE)
+    dbdata$Ucode <- factor(dbdata$Ucode, ordered = TRUE)
+    dbdata$Raid <- factor(dbdata$Release, ordered = TRUE)
+    dbdata$Features <- factor(dbdata$Features, ordered = TRUE)
+    
+    return(dbdata)
+  }
+  
+  
   # first display on the catalog tab
   # output$list <- renderUI({
   #   if (is.null(input$typeFilter)) {
@@ -221,38 +243,71 @@ server = function(input, output, session) {
   observeEvent(input$sidebarMenu, {
     if (input$sidebarMenu=="dashboard") {
       #output$catalogprint <- renderPrint({input$typeFilter})
+      
     }
     
     if (input$sidebarMenu=="catalog") {
-      output$filters <- renderUI({ 
-        box(title = "Filters", status = "primary", width = 3,
-          dateRangeInput("dateFilter", label =paste('Date Range'),
-                          start = Sys.Date() - 7, end = Sys.Date(), separator = " - ", format = "mm-dd-yyyy",
-                          startview = 'month', language = 'en', weekstart = 0),
-          checkboxGroupInput("typeFilter", label = h3("Box Type"),
-                             choices = list("250F" = "250F", "950F" = "950F", "PowerMax2000" = "PowerMax2000",
-                                            "PowerMax8000" = "PowerMax8000" ), selected = "250F"),
-          checkboxGroupInput("engineFilter", label = h3("Engines"),
-                             choices = list("1" = "1", "2" = "2", "8" = "8"),
-                             selected = NULL),
-          checkboxGroupInput("featuresFilter", label = h3("Features"),
-                             choices = list("Uncompressed" = "Uncompressed", "Compression" = "Compression",
-                                            "DeDupe" = "DeDupe", "PowerPath" = "PowerPath", "D@RE" = "DARE" ),
-                             selected = NULL),
-          br(),
-          actionButton("graph", "Add to graphs..."),
-          actionButton("export", "Export to DB2XL...")
-        )
-        
-        
-      })
+      # output$filters <- renderUI({ 
+      #   box(title = "Filters", status = "primary", width = 3,
+      #     dateRangeInput("dateFilter", label =paste('Date Range'),
+      #                     start = Sys.Date() - 7, end = Sys.Date(), separator = " - ", format = "mm-dd-yyyy",
+      #                     startview = 'month', language = 'en', weekstart = 0),
+      #     checkboxGroupInput("typeFilter", label = h3("Box Type"),
+      #                        choices = list("250F" = "250F", "950F" = "950F", "PowerMax2000" = "PowerMax2000",
+      #                                       "PowerMax8000" = "PowerMax8000" )),
+      #     checkboxGroupInput("engineFilter", label = h3("Engines"),
+      #                        choices = list("1" = "1", "2" = "2", "8" = "8"),
+      #                        selected = NULL),
+      #     checkboxGroupInput("featuresFilter", label = h3("Features"),
+      #                        choices = list("Uncompressed" = "Uncompressed", "Compression" = "Compression",
+      #                                       "DeDupe" = "DeDupe", "PowerPath" = "PowerPath", "D@RE" = "DARE" ),
+      #                        selected = NULL),
+      #     br(),
+      #     actionButton("graph", "Add to graphs..."),
+      #     actionButton("export", "Export to DB2XL...")
+      #   )
+      # })
       
       output$list <- renderUI({
-        tabBox(title = "OSPE Catalog", id = "tabset1", height = "250px", width = 9,
+        tabBox(title = "OSPE Catalog", id = "tabset1", height = "250px", width = 7,
                tabPanel("Database", DT::dataTableOutput("dbTable")),
                tabPanel("Graphs", verbatimTextOutput("debug")),
                tabPanel("Metadata", paste0("y")))
       })
+      
+      output$char <- renderUI({
+        box(title = "Characterization", status = "primary", width = 5, highchartOutput("charHC", height = "290px"))
+      })
+      
+      output$dbsim <- renderUI({
+        box(title = "DBsim", status = "primary", width = 5, highchartOutput("dbHC", height = "290px"))
+      })
+      
+      output$charHC <- renderHighchart({
+         highchart() %>%
+          hc_add_series(data = c(4444,20000,44789,73785,100000), type = "column") %>%
+          hc_plotOptions(column = list(colorByPoint = TRUE)) %>%
+          hc_yAxis(title = list(text = "IOps")) %>%
+          hc_xAxis(title = list(text = "Workloads")) %>%
+          hc_title(
+            text = "Test title") 
+        
+          #hc_add_series(data = purrr::map(0:4, function(x) list(x, x)), type = "scatter", color = "red")
+      })
+      
+      output$dbHC <- renderHighchart({
+        highchart() %>%
+          #hc_add_series(data = abs(rnorm(5)), type = "column") %>%
+          hc_add_series(data = c(0.42, 0.53, 0.69, 1.81, 4.12), type = "line", color = "blue") %>%
+        hc_title(
+          text = "Test title") 
+      })
+      
+      
+      dbdata = dbFullQuery()
+      output$dbTable <- DT::renderDT({dbdata}, options = list(pageLength = 14, lengthChange = FALSE, autoWidth = TRUE, dom = 'tp', scrollX = TRUE, 
+                                                              columnDefs = list(list(width = '150px', targets = c(1,2,3,4,5,6)))), 
+                                     filter = list(position = 'top', clear = FALSE), rownames = FALSE)
     }
     
     if (input$sidebarMenu=="ospeboxes") {
@@ -310,7 +365,7 @@ server = function(input, output, session) {
     }
     
     # use dbTable reference to dynamically change just the chart instead of re-rendering
-    output$dbTable <- DT::renderDT({dbdata}, options = list(pageLength = 15, lengthChange = FALSE))
+    output$dbTable <- DT::renderDT({dbdata}, options = list(pageLength = 15, lengthChange = FALSE, scrollX = TRUE))
     
     
   })
@@ -382,7 +437,7 @@ server = function(input, output, session) {
     }
     
     # use dbTable reference to dynamically change just the chart instead of re-rendering
-    output$dbTable <- DT::renderDT({dbdata}, options = list(pageLength = 15, lengthChange = FALSE, scrollX = TRUE))
+    output$dbTable <- DT::renderDT({dbdata}, options = list(pageLength = 15, lengthChange = FALSE))
     
   })
   
@@ -400,12 +455,16 @@ server = function(input, output, session) {
     })
   })
   
+  observeEvent(input$type,{
+    
+  })
+  
   observeEvent(input$export,{
     
     # output$list <- renderUI({
     #   box("hi", input$dbTable_rows_selected)
     # })
-    #system('ruby "C:/Users/lonl/Documents/Ruby/Post-Processing-v2/Main.rb"')
+    system('ruby "C:/Users/lonl/Documents/Ruby/Post-Processing-v2/Main.rb"')
   })
   
   output$plot <- renderHighchart({
