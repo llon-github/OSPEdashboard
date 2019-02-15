@@ -3,6 +3,9 @@
 Deployment of a Shiny web application for creating the OSPE catalog to easily filter out and find specific test runs
 
 <b>UPDATES:</b>
+02/15/19
+- Importing single use case into VScode for stronger version control
+
 
 09/17/2018
 - First commit to the repository

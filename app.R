@@ -9,6 +9,7 @@ library(tidyr)
 library(DT)
 library(readxl)
 library(RSQLite)
+library(reshape2)
 
 dashboardPage(
   dashboardHeader(),
@@ -73,7 +74,7 @@ ui <- dashboardPage(
 
       tabItems(
         #tabItem("dashboard"),
-        tabItem("catalog", uiOutput("list"), uiOutput("char"), column(11, offset = 7, uiOutput("dbsim"))),
+        tabItem("catalog", uiOutput("list")),
         tabItem("ospeboxes", uiOutput("boxlist")),
         tabItem("bitsandbytes", "Bits-N-Bytes Library", verbatimTextOutput(("print"))),
         tabItem("dellemcboxes", h2("DellEMC Boxes") , htmlOutput("boxeshtml"))
@@ -122,89 +123,12 @@ ui <- dashboardPage(
 # SERVER ------------------------------------------------------------
 server = function(input, output, session) {
   
-  # change form of SQLquery based on the filters used
-  filterCheck <- function(){
-    size <- length(input$typeFilter)
-    return(size)
-  }
-  
-  # call to query DB; pass in value depending on filters applied for box config
-  dbBoxQuery <- function(config){
-    # box filters
-    if (config=="250F") {
-      sqlitePath <- "db//master.db"
-      passedValue <- "VMax250F"
-    } else if (config=="950F"){
-      sqlitePath <- "db//master.db"
-      passedValue <- "VMax950F"
-    } else if (config=="PowerMax2000"){
-      sqlitePath <- "db//master.db"
-      passedValue <- "PMax2000"
-    } else if (config=="PowerMax8000"){
-      sqlitePath <- "db//master.db"
-      passedValue <- "PMax8000"
-    }
-    
-    query <- paste0("SELECT Model, Release, Ucode, Raid, Features, DbName FROM catalog WHERE Model LIKE '%", passedValue, "%'")
-    db <- dbConnect(SQLite(), dbname=sqlitePath)
-    dbdata <- dbGetQuery(db, query)
-    dbDisconnect(db)
-
-    return(dbdata)
-  }
-  
-  # call to query DB; pass in value depending on filters applied for number of engines
-  dbEngineQuery <- function(engines){
-    # engine filters
-    if (engines=="1") {
-      sqlitePath <- "db//master.db"
-      passedValue <- "1Engine"
-    } else if (engines=="2"){
-      sqlitePath <- "db//master.db"
-      passedValue <- "2Engine"
-    } else if (engines=="8"){
-      sqlitePath <- "db//master.db"
-      passedValue <- "8Engine"
-    }
-    
-    query <- paste0("SELECT Model, Release, Ucode, Raid, Features, TestPath FROM catalog WHERE Model LIKE '%", passedValue, "%'")
-    db <- dbConnect(SQLite(), dbname=sqlitePath)
-    dbdata <- dbGetQuery(db, query)
-    dbDisconnect(db)
-    
-    return(dbdata)
-  }
-  
-  # call to query DB; pass in value depending on filters applied for box features
-  dbFeaturesQuery <- function(features){
-    # features filters
-    if (features=="Uncompressed") {
-      sqlitePath <- "db//master.db"
-      passedValue <- "None"
-    } else if (features=="Compression"){
-      sqlitePath <- "db//master.db"
-      passedValue <- "COMP"
-    } else if (features=="DeDupe"){
-      sqlitePath <- "db//master.db"
-      passedValue <- "DEDUP"
-    } else if (features=="PowerPath"){
-      sqlitePath <- "db//master.db"
-      passedValue <- "POWER"
-    } else if (features=="DARE"){
-      sqlitePath <- "db//master.db"
-      passedValue <- "DARE"
-    }
-    
-    query <- paste0("SELECT Model, Release, Ucode, Raid, Features, TestPath FROM catalog WHERE Features LIKE '%", passedValue, "%'")
-    db <- dbConnect(SQLite(), dbname=sqlitePath)
-    dbdata <- dbGetQuery(db, query)
-    dbDisconnect(db)
-    
-    return(dbdata)
-  }
+  # global data storage for future manipulation
+  globalDbdata <- NULL
+  paths <- NULL
   
   # get every row from DB
-  dbFullQuery <- function(features){
+  dbFullQuery <- function(){
     sqlitePath <- "db//master.db"
     query <- paste0("SELECT CatID, Model, Release, Ucode, Raid, Features, TestPath FROM catalog")
     db <- dbConnect(SQLite(), dbname=sqlitePath)
@@ -221,23 +145,173 @@ server = function(input, output, session) {
     return(dbdata)
   }
   
+  charTestQuery <- function(){
+    # appending /Notes folder to testpaths from rows_selected
+    testPaths <- paste0(paths,"/Notes/")
+    writeType <- ""
+    
+    if (testPaths == "/Notes/"){
+      # input$charWorkload is triggered on startup; skip searching for path when "catalog" is clicked
+      print("Catalog Clicked (CHAR loop)")
+    } else {
+      testPaths <- paste0("//efsus03",testPaths)
+      
+      # take input box names and reference the data for that name in the DB
+      converted <- input$charWorkload
+      if (converted == "Random Read Hit"){
+        converted = "random_read_100hit"
+      }else if (converted == "Random Write Hit"){
+        converted = "random_write_hit"
+      }else if (converted == "Random Max Write"){
+        writeType = "max"
+        converted = "random_0read"
+      }else if (converted == "Random Sustained Write"){
+        writeType = "sustained"
+        converted = "random_0read"
+      }else if (converted == "Random Read Miss"){
+        converted = "random_100read"
+      }else if (converted == "Sequential Write"){
+        converted = "sequential_write"
+      }else if (converted == "Sequential Read"){
+        converted = "sequential_read"
+      }else{
+        converted = "Unknown Workload"
+      }
+      
+      sqliteFile <- list.files(testPaths, pattern="\\.db$")
+      sqlitePath <- paste0(testPaths, sqliteFile)
+      nameQuery <- paste0("SELECT DISTINCT Testname FROM char")
+      configQuery <- paste0("SELECT DISTINCT ConfigStr FROM char")
+      db <- dbConnect(SQLite(), dbname=sqlitePath)
+      nameData <- dbGetQuery(db, nameQuery)
+      configData <- dbGetQuery(db, configQuery)
+      
+      # number of unique workloads in CHAR table
+      uniqCharTests = NROW(nameData)
+      
+      for(i in 1:uniqCharTests) {
+        # special queries if sustained or max writes; else grab the IOPS column; want to grab full box but no definition; grabbing [1,1] 1st row, 1st column data
+        if (writeType == "max") {
+          charQuery <- paste0("SELECT Iteration, Testname, IOsize, Maxwrites FROM char WHERE Testname='",converted,"' AND ConfigStr='",configData[1,1],"' AND iteration=1")
+          blkSizeQuery <- paste0("SELECT IOsize FROM char WHERE Testname='",converted,"' AND ConfigStr='",configData[1,1],"' AND iteration=1")
+          sysQuery <- paste0("SELECT Model, Ucode FROM system")
+        } else if (writeType == "sustained") {
+          charQuery <- paste0("SELECT Iteration, Testname, IOsize, Suswrites FROM char WHERE Testname='",converted,"' AND ConfigStr='",configData[1,1],"' AND iteration=1")
+          blkSizeQuery <- paste0("SELECT IOsize FROM char WHERE Testname='",converted,"' AND ConfigStr='",configData[1,1],"' AND iteration=1")
+          sysQuery <- paste0("SELECT Model, Ucode FROM system")
+        } else {
+          charQuery <- paste0("SELECT Iteration, Testname, IOsize, IOPS FROM char WHERE Testname='",converted,"' AND ConfigStr='",configData[1,1],"' AND iteration=1")
+          blkSizeQuery <- paste0("SELECT IOsize FROM char WHERE Testname='",converted,"' AND ConfigStr='",configData[1,1],"' AND iteration=1")
+          sysQuery <- paste0("SELECT Model, Ucode FROM system")
+        }
+        charData <- dbGetQuery(db, charQuery)
+        blkSizeData <- dbGetQuery(db, blkSizeQuery)
+        systemData <- dbGetQuery(db, sysQuery)
+      }
   
-  # first display on the catalog tab
-  # output$list <- renderUI({
-  #   if (is.null(input$typeFilter)) {
-  #     tabBox(title = "OSPE Catalog", id = "tabset1", height = "250px", width = 9,
-  #            tabPanel("Database", value = "datapanel", output$query <- DT::renderDT({
-  #              sqlitePath <- "db//master.db"
-  #              query <- paste0("SELECT Model, Release, Ucode, Raid, Features, DbName FROM catalog")
-  #              db <- dbConnect(SQLite(), dbname=sqlitePath)
-  #              data <- dbGetQuery(db, query)
-  #              dbDisconnect(db)
-  # 
-  #              return(data)}, options = list(pageLength = 15, lengthChange = FALSE))),
-  #            tabPanel("Graphs", value = "graphpanel", "NULL tab"),
-  #            tabPanel("SX_Data", value = "metadatapanel", "NULL tab"))
-  #   }
-  # })
+      # put everything into a list so we can pass all the data to the next method
+      charList <- list(nameData, configData, charData, blkSizeData, systemData)
+      dbDisconnect(db)
+      return(charList)
+    }
+  }
+  
+  dbTestQuery <- function(){
+    # appending /Notes folder to testpaths from rows_selected
+    testPaths <- paste0(paths,"/Notes/")
+    
+    if (testPaths == "/Notes/"){
+      # input$dbWorkload is triggered on startup; skip searching for path when "catalog" is clicked
+      print("Catalog Clicked (DBsim loop)")
+    } else{
+      testPaths <- paste0("//efsus03",testPaths)
+      print(testPaths)
+      
+      # take input box names and reference the data for that name in the DB
+      x <- input$dbWorkload
+      
+      sqliteFile <- list.files(testPaths, pattern="\\.db$")
+      sqlitePath <- paste0(testPaths, sqliteFile)
+      nameQuery <- paste0("SELECT DISTINCT Testname FROM dbsim")
+      intervalQuery <- paste0("SELECT Intervals FROM dbsim WHERE Testname='",x,"' AND iteration=1")
+      db <- dbConnect(SQLite(), dbname=sqlitePath)
+      nameData <- dbGetQuery(db, nameQuery)
+      intervalData <- dbGetQuery(db, intervalQuery)
+    
+      # number of unique workloads in CHAR table
+      uniqDBTests = NROW(nameData)
+    
+      for(i in 1:uniqDBTests) {
+        # if IM style workload
+        if (intervalData == 7) {
+          dbIOPSquery <- paste0("SELECT IOPS1,IOPS2,IOPS3,IOPS4,IOPS5,IOPS6,IOPS7 FROM dbsim WHERE Testname='",x,"' AND iteration=1")
+          dbRTquery <- paste0("SELECT RT1,RT2,RT3,RT4,RT5,RT6,RT7 FROM dbsim WHERE Testname='",x,"' AND iteration=1")
+          sysQuery <- paste0("SELECT Model, Ucode FROM system")
+        } else {
+          dbIOPSquery <- paste0("SELECT IOPS1,IOPS2,IOPS3,IOPS4,IOPS5,IOPS6,IOPS7,IOPS8,IOPS9 FROM dbsim WHERE Testname='",x,"' AND iteration=1")
+          dbRTquery <- paste0("SELECT RT1,RT2,RT3,RT4,RT5,RT6,RT7,RT8,RT9 FROM dbsim WHERE Testname='",x,"' AND iteration=1")
+          sysQuery <- paste0("SELECT Model, Ucode FROM system")
+        }
+        dbIOPSdata <- dbGetQuery(db, dbIOPSquery)
+        dbRTdata <- dbGetQuery(db, dbRTquery)
+        systemData <- dbGetQuery(db, sysQuery)
+      }
+    
+      # put everything into a list so we can pass all the data to the next method
+      dbList <- list(nameData, dbIOPSdata, dbRTdata, systemData)
+      dbDisconnect(db)
+      return(dbList)
+    }
+  }
+  
+  observeEvent(input$charWorkload, {
+    charData = charTestQuery()
+    #print(charData)
+    # print the element in the 3rd data frame, 1st row, 4th column
+    #output$ass <- renderPrint({charData[[3]][1,4]})
+    output$zz <- renderPrint({charData[[1]][1]})
+    
+    output$charHC <- renderHighchart({
+      hc <- highchart() %>%
+        #hc_add_series(data = abs(rnorm(5)), type = "column") %>%
+        hc_add_series(name = charData[[5]][1,1], charData[[3]][,4], type = "column") %>%
+        hc_yAxis(title = list(text = "IOps")) %>%
+        hc_xAxis(title = list(text = "Block Size"), categories = charData[[4]][,1]) %>%
+        hc_title(
+          text = input$charWorkload)%>%
+        hc_tooltip(pointFormat = "
+                   {series.name} IOps: <b>{point.y:,.0f}</b><br>
+                   {series.name} MBps: <b>N/A</b>")
+    })
+  })
+  
+  observeEvent(input$dbWorkload, {
+    dbData = dbTestQuery()
+    #print(dbData)
+  
+    if (dbData == "Catalog Clicked (DBsim loop)"){
+      # do nothing
+    } else {
+      # melt data to reform into columns so we can plot
+      iopsData <- melt(dbData[[2]])
+      rtData <- melt(dbData[[3]])
+      systemData <- melt(dbData[[4]])
+      output$zz <- renderPrint({rtData[,2]})
+  
+      output$dbHC <- renderHighchart({
+        hc <- highchart() %>%
+          hc_add_series(name = systemData[1,1], rtData[,2], type = "line") %>%
+          hc_yAxis(title = list(text = "Response Time (ms)")) %>%
+          hc_xAxis(title = list(text = "IOps"), categories = iopsData[,2]) %>%
+          hc_title(
+            text = input$dbWorkload)%>%
+          hc_tooltip(pointFormat = "
+                     {series.name} IOps: <b>XXXXXX</b><br>
+                     {series.name} RT: <b>{point.y:,.2f}(ms)</b>")
+  
+      })
+    }
+  })
   
   # sidebarMenu triggers
   observeEvent(input$sidebarMenu, {
@@ -247,64 +321,43 @@ server = function(input, output, session) {
     }
     
     if (input$sidebarMenu=="catalog") {
-      # output$filters <- renderUI({ 
-      #   box(title = "Filters", status = "primary", width = 3,
-      #     dateRangeInput("dateFilter", label =paste('Date Range'),
-      #                     start = Sys.Date() - 7, end = Sys.Date(), separator = " - ", format = "mm-dd-yyyy",
-      #                     startview = 'month', language = 'en', weekstart = 0),
-      #     checkboxGroupInput("typeFilter", label = h3("Box Type"),
-      #                        choices = list("250F" = "250F", "950F" = "950F", "PowerMax2000" = "PowerMax2000",
-      #                                       "PowerMax8000" = "PowerMax8000" )),
-      #     checkboxGroupInput("engineFilter", label = h3("Engines"),
-      #                        choices = list("1" = "1", "2" = "2", "8" = "8"),
-      #                        selected = NULL),
-      #     checkboxGroupInput("featuresFilter", label = h3("Features"),
-      #                        choices = list("Uncompressed" = "Uncompressed", "Compression" = "Compression",
-      #                                       "DeDupe" = "DeDupe", "PowerPath" = "PowerPath", "D@RE" = "DARE" ),
-      #                        selected = NULL),
-      #     br(),
-      #     actionButton("graph", "Add to graphs..."),
-      #     actionButton("export", "Export to DB2XL...")
-      #   )
-      # })
       
       output$list <- renderUI({
-        tabBox(title = "OSPE Catalog", id = "tabset1", height = "250px", width = 7,
+        tabBox(title = "OSPE Catalog", id = "tabset1", width = 12,
                tabPanel("Database", DT::dataTableOutput("dbTable")),
-               tabPanel("Graphs", verbatimTextOutput("debug")),
+               tabPanel("Graphs",  fluidRow(column(4,selectInput("charWorkload", label = "CHAR Workload", choices = c("Random Read Hit", "Random Write Hit", "Random Max Write", "Random Sustained Write",
+                                                                                           "Random Read Miss", "Sequential Write", "Sequential Read"), selected = NULL)),
+                                   column(6,selectInput("dbWorkload", label = "DBsim Workload", choices = c("DSS128K", "OLTP2HW-IM", "OLTP2HW", "OLTP2_A", "RRH8K-IM", "RRM8K", "RWH512B-IM",
+                                                                                           "RWH8K-IM", "RWM_8192", "SIZER1", "TERADATA_A"), selected = NULL))),
+                                   actionButton("remChar", "Remove CHAR graphs"),actionButton("remDB", "Remove DBsim graphs"),highchartOutput("charHC"),highchartOutput("dbHC")),
+               tabPanel("Test", verbatimTextOutput("zz")),
                tabPanel("Metadata", paste0("y")))
       })
       
-      output$char <- renderUI({
-        box(title = "Characterization", status = "primary", width = 5, highchartOutput("charHC", height = "290px"))
-      })
-      
-      output$dbsim <- renderUI({
-        box(title = "DBsim", status = "primary", width = 5, highchartOutput("dbHC", height = "290px"))
-      })
-      
+      # set initial state of CHAR graph when catalog sidebar is clicked
       output$charHC <- renderHighchart({
-         highchart() %>%
-          hc_add_series(data = c(4444,20000,44789,73785,100000), type = "column") %>%
-          hc_plotOptions(column = list(colorByPoint = TRUE)) %>%
+        highchart() %>%
+          hc_rm_series(names = data) %>%
           hc_yAxis(title = list(text = "IOps")) %>%
           hc_xAxis(title = list(text = "Workloads")) %>%
           hc_title(
-            text = "Test title") 
-        
-          #hc_add_series(data = purrr::map(0:4, function(x) list(x, x)), type = "scatter", color = "red")
+            text = "Characterization Test")
       })
       
+      # set initial state of DBsim graph when catalog sidebar is clicked
       output$dbHC <- renderHighchart({
         highchart() %>%
           #hc_add_series(data = abs(rnorm(5)), type = "column") %>%
-          hc_add_series(data = c(0.42, 0.53, 0.69, 1.81, 4.12), type = "line", color = "blue") %>%
-        hc_title(
-          text = "Test title") 
+          hc_rm_series(name = data) %>%
+          hc_yAxis(title = list(text = "Response Time")) %>%
+          hc_xAxis(title = list(text = "Workloads")) %>%
+          hc_title(
+            text = "DBsim Test")
       })
       
-      
       dbdata = dbFullQuery()
+      globalDbdata <<- dbdata
+      #print(dbdata$TestPath)
       output$dbTable <- DT::renderDT({dbdata}, options = list(pageLength = 14, lengthChange = FALSE, autoWidth = TRUE, dom = 'tp', scrollX = TRUE, 
                                                               columnDefs = list(list(width = '150px', targets = c(1,2,3,4,5,6)))), 
                                      filter = list(position = 'top', clear = FALSE), rownames = FALSE)
@@ -333,113 +386,58 @@ server = function(input, output, session) {
     }
   })
   
-  # boxFilter triggers
-  observeEvent(input$typeFilter, {
-    # change to database panel when button clicked
-    updateTabsetPanel(session, "tabset1", selected = paste0("Database"))
+  
+  observeEvent(input$dbTable_rows_selected, {
+    test <- input$dbTable_rows_selected
     
-    # variable storage for multiple checkbox inputs
-    vmax250F <- "250F"  %in% input$typeFilter
-    vmax950F <- "950F"  %in% input$typeFilter
-    pmax2000 <- "PowerMax2000"  %in% input$typeFilter
-    pmax8000 <- "PowerMax8000"  %in% input$typeFilter
+    if (is.null(test)) {
+      # output nothing if nothing is selected
+    }else{
+      output$zz <- renderPrint({globalDbdata[test, 'TestPath']})
+      paths <<- globalDbdata[test, 'TestPath']
+      charData = charTestQuery()
 
-    if (vmax250F) {
-        filter <- "250F"
-        dbdata = dbBoxQuery(filter)
+      # render CHAR highchart
+      output$charHC <- renderHighchart({
+        hc <- highchart() %>%
+          #hc_add_series(data = abs(rnorm(5)), type = "column") %>%
+          hc_add_series(name = charData[[5]][1,1], charData[[3]][,4], type = "column") %>%
+          hc_yAxis(title = list(text = "IOps")) %>%
+          hc_xAxis(title = list(text = "Block Size"), label = list(text = "test"), categories = charData[[4]][,1]) %>%
+          hc_title(
+            text = input$charWorkload)%>%
+          hc_tooltip(pointFormat = "
+                     {series.name} IOps: <b>{point.y:,.0f}</b><br>
+                     {series.name} MBps: <b>N/A</b>")
+      })
+      
+      # render DBsim highchart
+      dbData = dbTestQuery()
+      
+      # melt data to reform into columns so we can plot
+      iopsData <- melt(dbData[[2]])
+      rtData <- melt(dbData[[3]])
+      systemData <- melt(dbData[[4]])
+      print(systemData)
+      output$zz <- renderPrint({rtData[,2]})
+      
+      output$dbHC <- renderHighchart({
+        hc <- highchart() %>%
+          hc_add_series(name = systemData[1,1], rtData[,2], type = "line") %>%
+          hc_yAxis(title = list(text = "Response Time (ms)")) %>%
+          hc_xAxis(title = list(text = "IOps"), categories = iopsData[,2]) %>%
+          hc_title(
+            text = input$dbWorkload)%>%
+          hc_tooltip(pointFormat = "
+                     {series.name} IOps: <b>{point.x:,.0f}</b><br>
+                     {series.name} RT: <b>{point.y:,.2f}(ms)</b>")
+        
+      })
+  
     }
-
-    if (vmax950F) {
-        filter <- "950F"
-        dbdata = dbBoxQuery(filter)
-    }
-
-    if (pmax2000) {
-        filter <- "PowerMax2000"
-        dbdata = dbBoxQuery(filter)
-    }
-
-    if (pmax8000) {
-        filter <- "PowerMax8000"
-        dbdata = dbBoxQuery(filter)
-    }
-    
-    # use dbTable reference to dynamically change just the chart instead of re-rendering
-    output$dbTable <- DT::renderDT({dbdata}, options = list(pageLength = 15, lengthChange = FALSE, scrollX = TRUE))
-    
     
   })
   
-  # engine triggers
-  observeEvent(input$engineFilter, {
-    # change to database panel when button clicked
-    updateTabsetPanel(session, "tabset1", selected = paste0("Database"))
-    
-    # variable storage for multiple checkbox inputs
-    engines1 <- "1"  %in% input$engineFilter
-    engines2 <- "2"  %in% input$engineFilter
-    engines8 <- "8"  %in% input$engineFilter
-    
-    if (engines1) {
-        filter <- "1"
-        dbdata = dbEngineQuery(filter)
-    }
-    
-    if (engines2) {
-        filter <- "2"
-        dbdata = dbEngineQuery(filter)
-    }
-    
-    if (engines8) {
-        filter <- "8"
-        dbdata = dbEngineQuery(filter)
-    }
-    
-    # use dbTable reference to dynamically change just the chart instead of re-rendering
-    output$dbTable <- DT::renderDT({dbdata}, options = list(pageLength = 15, lengthChange = FALSE))
-  })
-  
-  # features triggers
-  observeEvent(input$featuresFilter, {
-    # change to database panel when button clicked
-    updateTabsetPanel(session, "tabset1", selected = paste0("Database"))
-    
-    # variable storage for multiple checkbox inputs
-    noComp <- "Uncompressed"  %in% input$featuresFilter
-    comp <- "Compression"  %in% input$featuresFilter
-    dedupe <- "DeDupe"  %in% input$featuresFilter
-    powerpath <- "PowerPath"  %in% input$featuresFilter
-    dare <- "DARE"  %in% input$featuresFilter
-    
-    if (noComp) {
-        filter <- "Uncompressed"
-        dbdata = dbFeaturesQuery(filter)
-    }
-    
-    if (comp) {
-        filter <- "Compression"
-        dbdata = dbFeaturesQuery(filter)
-    }
-    
-    if (dedupe) {
-        filter <- "DeDupe"
-        dbdata = dbFeaturesQuery(filter)
-    }
-    
-    if (powerpath) {
-        filter <- "PowerPath"
-        dbdata = dbFeaturesQuery(filter)
-    }
-    
-    if (dare) {
-        filter <- "DARE"
-        dbdata = dbFeaturesQuery(filter)
-    }
-    
-    # use dbTable reference to dynamically change just the chart instead of re-rendering
-    output$dbTable <- DT::renderDT({dbdata}, options = list(pageLength = 15, lengthChange = FALSE))
-    
-  })
   
   storedSelections <- reactiveValues()
   
@@ -455,16 +453,27 @@ server = function(input, output, session) {
     })
   })
   
-  observeEvent(input$type,{
-    
+  # temp variable for highcharts; will use real DBdata instead
+  data = c(4.64, 10.53, 8.69, 3.81, 22.12, 16.68, 15.89, 12.45)
+  data2 = c(1.64, 17.53, 8.69, 13.81, 12.12, 8.68, 3.89, 2.45)
+  
+  observeEvent(input$remChar, {
+    #hc$params$series[[1]] <- NULL
+    output$charHC <- renderHighchart({
+      hc <- highchart() %>%
+        hc_rm_series(names = data) %>%
+        hc_title(
+          text = "Characterization TEST")
+    })
   })
   
-  observeEvent(input$export,{
-    
-    # output$list <- renderUI({
-    #   box("hi", input$dbTable_rows_selected)
-    # })
-    system('ruby "C:/Users/lonl/Documents/Ruby/Post-Processing-v2/Main.rb"')
+  observeEvent(input$remDB,{
+    output$dbHC <- renderHighchart({
+      hc <- highchart() %>%
+        hc_rm_series(name = data) %>%
+        hc_title(
+          text = "DBsim TEST")
+    })
   })
   
   output$plot <- renderHighchart({
