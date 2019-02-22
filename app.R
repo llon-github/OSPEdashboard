@@ -77,45 +77,11 @@ ui <- dashboardPage(
         tabItem("catalog", uiOutput("list")),
         tabItem("ospeboxes", uiOutput("boxlist")),
         tabItem("bitsandbytes", "Bits-N-Bytes Library", verbatimTextOutput(("print"))),
-        tabItem("dellemcboxes", h2("DellEMC Boxes") , htmlOutput("boxeshtml"))
+        tabItem("dellemcboxes", htmlOutput("boxeshtml"))
         )
       )
     ),
-      # box(
-      #   title = "Controls",
-      #   sliderInput("slider", "Number of observations:", 1, 100, 50),
-      #   
-      #   # change plot properties
-      #   selectInput("plot_type",
-      #               label = "Plot Type",
-      #               choices = c("Scatter" = "scatter",
-      #                           "Bar" = "column",
-      #                           "Line" = "line")),
-      #   selectInput("theme",
-      #               label = "Plot Theme",
-      #               choices = c("No theme",
-      #                           "Chalk" = "chalk",
-      #                           "Dark Unica" = "darkunica",
-      #                           "Economist" = "economist"
-      #               )),
-      #   
-      #   # timeperiod choice
-      #   dateRangeInput("dateFilter", label =paste('Date Range'),
-      #                  start = Sys.Date() - 7, end = Sys.Date(), separator = " - ", format = "mm-dd-yyyy",
-      #                  startview = 'month', language = 'en', weekstart = 0),
-      #   verbatimTextOutput("dateValue")
-      # ),
-      # 
-      # tags$head(tags$style(HTML('
-      # .main-header .logo {
-      #   font-family: "Arial", "Helvetica", sans-serif;
-      #   font-weight: bold;
-      #   font-size: 24px;
-      # }
-      # '))),
-
-      #highchartOutput("plot", height = "300px"),
-  # window color
+      
   skin = "purple"
 )
 
@@ -274,7 +240,7 @@ server = function(input, output, session) {
   
   observeEvent(input$dbTable_rows_selected, {
     test <- input$dbTable_rows_selected
-    
+
     if (is.null(test)) {
       # output nothing if nothing is selected
     }else{
@@ -287,8 +253,7 @@ server = function(input, output, session) {
         hc <- highchart() %>%
           hc_yAxis(title = list(text = "IOps")) %>%
           # for (i in 1:numPaths) {
-          #   hc_add_series(name = charData[[j]][[5]][1,1], charData[[j]][[3]][,4], type = "column") %>%
-          #   i = i + 1
+          #   hc_add_series(name = charData[[j]][[5]][1,1], charData[[j]][[3]][,4], type = "column")
           # }
           hc_add_series(name = charData[[1]][[5]][1,1], charData[[1]][[3]][,4], type = "column") %>%
           hc_add_series(name = charData[[2]][[5]][1,1], charData[[2]][[3]][,4], type = "column") %>%
@@ -325,7 +290,6 @@ server = function(input, output, session) {
           hc_add_series_scatter(name = systemData[[2]][1,1], iopsData[[2]][,2], rtData[[2]][,2], showInLegend = TRUE, lineWidth = 2) %>%
           hc_add_series_scatter(name = systemData[[3]][1,1], iopsData[[3]][,2], rtData[[3]][,2], showInLegend = TRUE, lineWidth = 2) %>%
           hc_yAxis(title = list(text = "Response Time (ms)")) %>%
-          #hc_xAxis(title = list(text = "IOps"), categories = iopsData[[1]][,2]) %>%
           hc_xAxis(title = list(text = "IOps")) %>%
           hc_title(
             text = input$dbWorkload)%>%
@@ -434,7 +398,7 @@ server = function(input, output, session) {
       output$boxlist <- renderUI({
         box(title = "OSPE Boxes", status = "primary", width = 12,
             output$renderOSPEboxes <- DT::renderDT({
-              location = "\\\\efsus03\\pdata\\OSPE_Group_Folder\\dashboard\\machinelist.xlsx"
+              location = "\\\\efsus03\\pdata\\OSPE_Group_Folder\\dashboard\\OSPerfMachineList.xlsx"
               read_xlsx(paste(location))
             }, options = list(pageLength = 5, lengthChange = FALSE))
         )
@@ -443,9 +407,12 @@ server = function(input, output, session) {
     
     if (input$sidebarMenu=="dellemcboxes") {
       getPage<-function(){
-        return(includeHTML("\\\\efsus03\\pdata\\OSPE_Group_Folder\\dashboard\\boxlist.htm"))
+        return(includeHTML("\\\\efsus03\\pdata\\OSPE_Group_Folder\\dashboard\\Boxlist.htm"))
       }
-      output$boxeshtml<-renderUI({getPage()})
+      
+      output$boxeshtml<-renderUI({
+        box(title = "DellEMC Box Directory", status = "primary", width = 12, getPage())
+      })
     }
     
     if (input$sidebarMenu=="bitsandbytes") {
