@@ -321,11 +321,12 @@ server = function(input, output, session) {
       
       output$dbHC <- renderHighchart({
         hc <- highchart() %>%
-          hc_add_series(name = systemData[[1]][1,1], rtData[[1]][,2], type = "line") %>%
-          hc_add_series(name = systemData[[2]][2,1], rtData[[2]][,2], type = "line") %>%
-          hc_add_series(name = systemData[[3]][3,1], rtData[[3]][,2], type = "line") %>%
+          hc_add_series_scatter(name = systemData[[1]][1,1], iopsData[[1]][,2], rtData[[1]][,2], showInLegend = TRUE, lineWidth = 2) %>%
+          hc_add_series_scatter(name = systemData[[2]][1,1], iopsData[[2]][,2], rtData[[2]][,2], showInLegend = TRUE, lineWidth = 2) %>%
+          hc_add_series_scatter(name = systemData[[3]][1,1], iopsData[[3]][,2], rtData[[3]][,2], showInLegend = TRUE, lineWidth = 2) %>%
           hc_yAxis(title = list(text = "Response Time (ms)")) %>%
-          hc_xAxis(title = list(text = "IOps"), categories = iopsData[[1]][,2]) %>%
+          #hc_xAxis(title = list(text = "IOps"), categories = iopsData[[1]][,2]) %>%
+          hc_xAxis(title = list(text = "IOps")) %>%
           hc_title(
             text = input$dbWorkload)%>%
           hc_tooltip(pointFormat = "
@@ -386,11 +387,11 @@ server = function(input, output, session) {
   
       output$dbHC <- renderHighchart({
         hc <- highchart() %>%
-          hc_add_series(name = systemData[[1]][1,1], rtData[[1]][,2], type = "line") %>%
-          hc_add_series(name = systemData[[2]][2,1], rtData[[2]][,2], type = "line") %>%
-          hc_add_series(name = systemData[[3]][3,1], rtData[[3]][,2], type = "line") %>%
+          hc_add_series_scatter(name = systemData[[1]][1,1], iopsData[[1]][,2], rtData[[1]][,2], showInLegend = TRUE, lineWidth = 2) %>%
+          hc_add_series_scatter(name = systemData[[2]][1,1], iopsData[[2]][,2], rtData[[2]][,2], showInLegend = TRUE, lineWidth = 2) %>%
+          hc_add_series_scatter(name = systemData[[3]][1,1], iopsData[[3]][,2], rtData[[3]][,2], showInLegend = TRUE, lineWidth = 2) %>%
           hc_yAxis(title = list(text = "Response Time (ms)")) %>%
-          hc_xAxis(title = list(text = "IOps"), categories = iopsData[[1]][,2]) %>%
+          hc_xAxis(title = list(text = "IOps")) %>%
           hc_title(
             text = input$dbWorkload)%>%
           hc_tooltip(pointFormat = "
@@ -424,7 +425,6 @@ server = function(input, output, session) {
       
       dbdata = dbFullQuery()
       globalDbdata <<- dbdata
-      #print(dbdata$TestPath)
       output$dbTable <- DT::renderDT({dbdata}, options = list(pageLength = 14, lengthChange = FALSE, autoWidth = TRUE, dom = 'tp', scrollX = TRUE, 
                                                               columnDefs = list(list(width = '150px', targets = c(1,2,3,4,5,6)))), 
                                      filter = list(position = 'top', clear = FALSE), rownames = FALSE)
@@ -465,29 +465,6 @@ server = function(input, output, session) {
   
     output$debug <- renderPrint({
       storedSelections$dList
-    })
-  })
-  
-  # temp variable for highcharts; will use real DBdata instead
-  data = c(4.64, 10.53, 8.69, 3.81, 22.12, 16.68, 15.89, 12.45)
-  data2 = c(1.64, 17.53, 8.69, 13.81, 12.12, 8.68, 3.89, 2.45)
-  
-  observeEvent(input$remChar, {
-    #hc$params$series[[1]] <- NULL
-    output$charHC <- renderHighchart({
-      hc <- highchart() %>%
-        hc_rm_series(names = data) %>%
-        hc_title(
-          text = "Characterization TEST")
-    })
-  })
-  
-  observeEvent(input$remDB,{
-    output$dbHC <- renderHighchart({
-      hc <- highchart() %>%
-        hc_rm_series(names = data) %>%
-        hc_title(
-          text = "DBsim TEST")
     })
   })
   
